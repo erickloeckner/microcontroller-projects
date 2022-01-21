@@ -1,0 +1,39 @@
+[package]
+name = "trinket-led"
+version = "0.1.0"
+authors = ["eric"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+trinket_m0 = "0.10"
+panic-halt = "0.2"
+cortex-m = "~0.6"
+
+[dependencies.cortex-m-rt]
+version = "~0.6.12"
+optional = true
+
+[dependencies.atsamd-hal]
+version = "0.13"
+default-features = false
+
+[dependencies.usb-device]
+version = "0.2"
+optional = true
+
+[dev-dependencies]
+cortex-m = "0.7"
+usbd-serial = "0.1"
+panic-halt = "0.2"
+
+[features]
+default = ["rt", "atsamd-hal/samd21e"]
+rt = ["cortex-m-rt", "atsamd-hal/samd21e-rt"]
+unproven = ["atsamd-hal/unproven"]
+usb = ["atsamd-hal/usb", "usb-device"]
+use_semihosting = []
+
+[package.metadata]
+chip = "ATSAMD21E18A"
