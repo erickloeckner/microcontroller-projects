@@ -1,5 +1,5 @@
 [package]
-name = "trinket-led"
+name = "led-lamp"
 version = "0.1.0"
 authors = ["eric"]
 edition = "2018"
