@@ -1,0 +1,33 @@
+[package]
+name = "template"
+version = "0.1.0"
+authors = ["eric"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+itsybitsy_m0 = "0.11"
+panic-halt = "0.2"
+
+[dependencies.cortex-m-rt]
+version = "0.6.12"
+optional = true
+
+[dependencies.atsamd-hal]
+version = "0.13"
+default-features = false
+
+[dependencies.usb-device]
+version = "0.2"
+optional = true
+
+[features]
+default = ["rt", "atsamd-hal/samd21g"]
+rt = ["cortex-m-rt", "atsamd-hal/samd21g-rt"]
+usb = ["atsamd-hal/usb", "usb-device"]
+unproven = ["atsamd-hal/unproven"]
+use_semihosting = []
+
+[package.metadata]
+chip = "ATSAMD21G18A"
