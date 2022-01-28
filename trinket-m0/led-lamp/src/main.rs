@@ -1,7 +1,15 @@
 #![no_std]
 #![no_main]
 
+mod buffer;
+mod prng;
+mod utilities;
+
 use core::cell::Cell;
+
+use crate::buffer::RingBuffer8;
+use crate::prng::Prng;
+use crate::utilities::*;
 
 use bsp::hal;
 use panic_halt as _;
@@ -21,7 +29,8 @@ use cortex_m::interrupt as cortex_interrupt;
 use cortex_m::interrupt::Mutex;
 use cortex_m::peripheral::NVIC;
 
-const NUM_LEDS: usize = 42;
+const NUM_LEDS: usize = 62;
+const BRIGHTNESS: u8 = 63;
 const BUF_SIZE: usize = 4 + (NUM_LEDS * 4) + ((NUM_LEDS + 1) / 2);
 const RAND_SCALE: u8 = 8;
 const SINE_SPEED: u8 = 100;
@@ -72,14 +81,16 @@ impl Leds {
     }
     
     fn set_led(&mut self, pixel: Pixel, index: usize) {
-        match self.buffer.chunks_mut(4).skip(1).nth(index) {
-            Some(v) => {
-                v[0] = 255;
-                v[1] = pixel.b;
-                v[2] = pixel.g;
-                v[3] = pixel.r;
-            },
-            None => {},
+        if index < self.len {
+            match self.buffer.chunks_mut(4).skip(1).nth(index) {
+                Some(v) => {
+                    v[0] = 255;
+                    v[1] = pixel.b;
+                    v[2] = pixel.g;
+                    v[3] = pixel.r;
+                },
+                None => {},
+            }
         }
     }
     
@@ -225,24 +236,6 @@ fn hsv_interp(col1: PixelHsv, col2: PixelHsv, value: u8) -> PixelHsv {
     PixelHsv { h: h_out, s: s_out, v: v_out }
 }
 
-struct Prng {
-    seed: u64,
-    a: u32,
-    c: u32,
-    modulus: u32,
-}
-
-impl Prng {
-    fn new(seed: u64) -> Self {
-        Prng {seed: seed, a: 1103515245, c: 12345, modulus: 2147483648}
-    }
-    
-    fn rand(&mut self) -> u64 {
-        self.seed = (self.seed * (self.a as u64) + (self.c as u64)) % (self.modulus as u64);
-        self.seed
-    }
-}
-
 #[derive(Debug, Copy, Clone)]
 struct RandomSprite {
     value: u8,
@@ -285,43 +278,7 @@ impl RandomSprite {
     }
 }
 
-struct RingBuffer8 {
-    buffer: [u8; 8],
-    pos: usize,
-}
-
-impl RingBuffer8 {
-    fn new() -> RingBuffer8 {
-        RingBuffer8 {
-            buffer: [0; 8],
-            pos: 0,
-        }
-    }
-    
-    fn push(&mut self, value: u8) {
-        self.buffer[self.pos] = value;
-        self.pos = (self.pos + 1) % self.buffer.len();
-    }
-    
-    fn mean(&mut self) -> u8 {
-        let sum: u16 = self.buffer
-            .iter()
-            .fold(0, |s, &i| s + (i as u16));
-        (sum / (self.buffer.len() as u16)) as u8
-        
-    }
-}
-
 static MILLIS: Mutex<Cell<u32>> = Mutex::new(Cell::new(0));
-
-fn u8_scale(val: u8, scale: u8) -> u8 {
-    ((val as u16 * (scale as u16 + 1)) >> 8) as u8
-}
-
-fn map_range(input: u8, input_max: u8, output_max: u8) -> u8 {
-    let percent_in = ((input as u16 * 255) / (input_max as u16)) as u8;
-    u8_scale(output_max, percent_in)
-}
 
 #[entry]
 fn main() -> ! {
@@ -421,10 +378,10 @@ fn main() -> ! {
             color2 = pot2_buffer.mean();
             
             match pattern {
-                0 => { leds.fill_gradient(PixelHsv { h: color1, s: 255, v: 31 }, PixelHsv { h: color2, s: 255, v: 31 }); }
-                1 => { leds.fill_gradient_mod(PixelHsv { h: color1, s: 255, v: 31 }, PixelHsv { h: color2, s: 255, v: 31 }, &random_sprites); }
-                2 => { leds.fill_sine(PixelHsv { h: color1, s: 255, v: 31 }, PixelHsv { h: color2, s: 255, v: 31 }, &sine_table, sine_offset); }
-                3 => { leds.fill_sine_mod(PixelHsv { h: color1, s: 255, v: 31 }, PixelHsv { h: color2, s: 255, v: 31 }, &sine_table, sine_offset, &random_sprites); }
+                0 => { leds.fill_gradient(PixelHsv { h: color1, s: 255, v: BRIGHTNESS }, PixelHsv { h: color2, s: 255, v: BRIGHTNESS }); }
+                1 => { leds.fill_gradient_mod(PixelHsv { h: color1, s: 255, v: BRIGHTNESS }, PixelHsv { h: color2, s: 255, v: BRIGHTNESS }, &random_sprites); }
+                2 => { leds.fill_sine(PixelHsv { h: color1, s: 255, v: BRIGHTNESS }, PixelHsv { h: color2, s: 255, v: BRIGHTNESS }, &sine_table, sine_offset); }
+                3 => { leds.fill_sine_mod(PixelHsv { h: color1, s: 255, v: BRIGHTNESS }, PixelHsv { h: color2, s: 255, v: BRIGHTNESS }, &sine_table, sine_offset, &random_sprites); }
                 _ => (),
             }
             let _ = spi.write(&leds.buffer[..]);
