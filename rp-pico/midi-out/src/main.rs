@@ -18,7 +18,6 @@ use embedded_time::rate::Baud;
 
 use panic_halt as _;
 
-//~ use rp_pico::hal::prelude::*;
 use rp_pico::hal::pac;
 use rp_pico::hal;
 use rp_pico::hal::pac::interrupt;
@@ -38,10 +37,7 @@ static mut MILLIS_ALARM: Option<Alarm0> = None;
 #[entry]
 fn main() -> ! {
     let mut pac = pac::Peripherals::take().unwrap();
-    //~ let core = pac::CorePeripherals::take().unwrap();
-
     let mut watchdog = hal::Watchdog::new(pac.WATCHDOG);
-
     let clocks = hal::clocks::init_clocks_and_plls(
         rp_pico::XOSC_CRYSTAL_FREQ,
         pac.XOSC,
@@ -73,8 +69,6 @@ fn main() -> ! {
         pac::NVIC::unmask(hal::pac::Interrupt::TIMER_IRQ_0);
     };
 
-    //~ let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
-
     let sio = hal::Sio::new(pac.SIO);
 
     let pins = rp_pico::Pins::new(
@@ -104,9 +98,6 @@ fn main() -> ! {
     
     // the local millisecond counter variable
     let mut millis: u32 = 0;
-    
-    //~ let mut last_update: u32 = 0;
-    //~ let mut last_state: bool = false;
 
     loop {
         // copy the global millisecond value into the local variable.
@@ -128,22 +119,6 @@ fn main() -> ! {
                 led_pin.set_low().unwrap();
             }
         }
-        
-        /*
-        // now the LED can blink without any blocking delays
-        if (millis - last_update) >= 1000 {
-            if last_state == true {
-                led_pin.set_low().unwrap();
-                midi::note_on(&mut uart, 1, 35, 0);
-                last_state = false;
-            } else if last_state == false {
-                led_pin.set_high().unwrap();
-                midi::note_on(&mut uart, 1, 35, 63);
-                last_state = true;
-            }
-            last_update = millis;
-        }
-        */
     }
 }
 
