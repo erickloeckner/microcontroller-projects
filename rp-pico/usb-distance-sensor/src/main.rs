@@ -9,8 +9,6 @@ use crate::buffer::RingBuffer;
 mod sensor;
 use crate::sensor::DistanceSensor;
 
-use embedded_time::rate::*;
-
 use panic_halt as _;
 
 use rp_pico::hal::prelude::*;
@@ -21,8 +19,6 @@ use rp_pico::hal::Timer;
 
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
-
-use embedded_hal::digital::v2::OutputPin;
 
 const BUFFER_SIZE: usize = 20;
 
@@ -45,7 +41,8 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
-    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
+    let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
+    let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
 
     let sio = hal::Sio::new(pac.SIO);
 
@@ -78,7 +75,6 @@ fn main() -> ! {
     );
     let mut buf = RingBuffer::<u16, BUFFER_SIZE>::new();
 
-    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
     let mut last_update: u64 = 0;
     
     let mut led_pin = pins.led.into_push_pull_output();
@@ -102,20 +98,6 @@ fn main() -> ! {
                         },
                         // --command 1: 
                         1 => {
-                            /*
-                            let start = timer.get_counter();
-                            loop {
-                                if serial.rts() { 
-                                    break;
-                                }
-                                if timer.get_counter() - start >= 5000000 {
-                                    //~ serial.write(&[0, 1, 2, 3).ok();
-                                    led_pin.set_high().ok();
-                                    break;
-                                }
-                            }
-                            */
-                            
                             let dist = buf.mean();
                             serial.write(&dist.to_le_bytes()).ok();
                             match serial.flush() {
@@ -131,11 +113,9 @@ fn main() -> ! {
                 }
             }
         }
-        //~ buf.push(sensor1.get_value(&mut delay));
-        //~ delay.delay_ms(10);
         
-        if timer.get_counter() - last_update >= 10000 {
-            last_update = timer.get_counter();
+        if timer.get_counter().ticks() - last_update >= 10000 {
+            last_update = timer.get_counter().ticks();
             buf.push(sensor1.get_value(&mut delay));
         }
     }
