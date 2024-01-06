@@ -16,11 +16,13 @@ use rp_pico::entry;
 use rp_pico::hal::pac;
 use rp_pico::hal;
 use rp_pico::hal::Timer;
+use rp_pico::hal::fugit::Duration;
 
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
 
 const BUFFER_SIZE: usize = 20;
+const MILLIS_PER_READING: u64 = 10;
 
 #[entry]
 fn main() -> ! {
@@ -71,14 +73,13 @@ fn main() -> ! {
     let mut sensor1 = DistanceSensor::new(
         pins.gpio20.into_push_pull_output(),
         pins.gpio21.into_pull_down_input(),
-        65535u16,
+        20000,
     );
     let mut buf = RingBuffer::<u16, BUFFER_SIZE>::new();
 
-    let mut last_update: u64 = 0;
+    let mut last_update = timer.get_counter();
+    let loop_duration = Duration::<u64, 1, 1000000>::millis(MILLIS_PER_READING);
     
-    let mut led_pin = pins.led.into_push_pull_output();
-
     loop {
         if usb_dev.poll(&mut [&mut serial]) {
             let mut usb_buf = [0u8; 64];
@@ -113,9 +114,9 @@ fn main() -> ! {
                 }
             }
         }
-        
-        if timer.get_counter().ticks() - last_update >= 10000 {
-            last_update = timer.get_counter().ticks();
+         
+        if timer.get_counter() - last_update >= loop_duration {
+            last_update = timer.get_counter();
             buf.push(sensor1.get_value(&mut delay));
         }
     }
