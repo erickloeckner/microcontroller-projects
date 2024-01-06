@@ -20,19 +20,27 @@ impl<T: OutputPin, E: InputPin> DistanceSensor<T, E> {
         delay.delay_us(100);
         let _ = self.trig.set_low();
         
-        while self.echo.is_low().ok().is_some() {
-            delay.delay_us(1);
-            wait_us = wait_us.saturating_add(1);
-            if wait_us >= self.timeout {
-                break;
+        loop {
+            match self.echo.is_low().ok() {
+                Some(true) => {
+                    delay.delay_us(1);
+                    wait_us = wait_us.saturating_add(1);
+                    if wait_us >= self.timeout { break; }
+                }
+                Some(false) => { break; },
+                None => { break; },
             }
         }
         
-        while self.echo.is_high().ok().is_some() {
-            delay.delay_us(1);
-            pulse_us = pulse_us.saturating_add(1);
-            if pulse_us >= self.timeout {
-                break;
+        loop {
+            match self.echo.is_high().ok() {
+                Some(true) => {
+                    delay.delay_us(1);
+                    pulse_us = pulse_us.saturating_add(1);
+                    if pulse_us >= self.timeout { break; }
+                }
+                Some(false) => { break; },
+                None => { break; },
             }
         }
         pulse_us
