@@ -1,5 +1,5 @@
 // build directions:
-// cargo build --release
+// NAME=serial_num LED_COUNT=10 LED_TYPE=apa102 cargo build --release
 // elf2uf2-rs ./target/thumbv6m-none-eabi/release/usb-leds usb-leds.uf2
 
 #![no_std]
@@ -13,9 +13,8 @@ use rp_pico::hal::prelude::*;
 use rp_pico::hal::gpio;
 use rp_pico::hal::spi;
 use rp_pico::hal::Timer;
-//~ use embedded_hal::digital::v2::OutputPin;
-use embedded_hal::prelude::_embedded_hal_blocking_spi_Write;
-use embedded_time::rate::*;
+use rp2040_hal::fugit::{Duration, ExtU64, RateExtU32};
+use cortex_m::prelude::*;
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
 
@@ -27,16 +26,6 @@ mod prng;
 use crate::prng::Prng;
 mod sprites;
 use crate::sprites::RandomSprites;
-
-const SERIAL_NUM: &str = "unique_name";
-const LED_TYPE: LedType = LedType::Apa102;
-//~ const LED_TYPE: LedType = LedType::Ws2801;
-const NUM_LEDS: usize = 32;
-
-//~ --APA102 LEDs
-const BUF_SIZE: usize = 4 + (NUM_LEDS * 4) + ((NUM_LEDS + 1) / 2);
-//~ --WS2801 LEDs
-//~ const BUF_SIZE: usize = NUM_LEDS * 3;
 
 #[derive(PartialEq)]
 struct ColorMessage {
@@ -96,8 +85,10 @@ fn main() -> ! {
     );
     
     //~ let mut led_pin = pins.led.into_push_pull_output();
-    
-    //~ let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
+    let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
+    let update_time: Duration<u64, 1, 1000000> = 10_u64.millis();
+    let serial_timeout: Duration<u64, 1, 1000000> = 1_000_u64.millis();
+    let mut last_update = timer.get_counter();
 
     let usb_bus = UsbBusAllocator::new(hal::usb::UsbBus::new(
         pac.USBCTRL_REGS,
@@ -107,36 +98,53 @@ fn main() -> ! {
         &mut pac.RESETS,
     ));
     let mut serial = SerialPort::new(&usb_bus);
+    let serial_num = env!("NAME");
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x16c0, 0x27dd))
-        .manufacturer("Eric Kloeckner")
-        .product("USB LEDs")
-        .serial_number(SERIAL_NUM)
+        .strings(&[StringDescriptors::default()
+            .manufacturer("Eric Kloeckner")
+            .product("USB LEDs")
+            .serial_number(serial_num)])
+        .unwrap()
         .device_class(2) // from: https://www.usb.org/defined-class-codes
         .build();
     
-    let _spi_sclk = pins.gpio2.into_mode::<gpio::FunctionSpi>();
-    let _spi_mosi = pins.gpio3.into_mode::<gpio::FunctionSpi>();
-    //~ let _spi_miso = pins.gpio4.into_mode::<gpio::FunctionSpi>();
+    let spi_sclk: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> = pins.gpio2.reconfigure();
+    let spi_mosi: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> = pins.gpio3.reconfigure();
+    let spi_miso: gpio::Pin<_, gpio::FunctionSpi, gpio::PullUp> = pins.gpio4.reconfigure();
 
-    let spi = spi::Spi::<_, _, 8>::new(pac.SPI0);
+    let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI0, (spi_mosi, spi_miso, spi_sclk));
+
     let mut spi = spi.init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
         1_000_000u32.Hz(),
-        &embedded_hal::spi::MODE_0,
+        embedded_hal::spi::MODE_0,
     );
     
-    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
-    
+    let led_count = match usize::from_str_radix(env!("LED_COUNT"), 10) {
+        Ok(v) => v,
+        Err(_) => 10,
+    };
+
+    let led_type = match env!("LED_TYPE") {
+        "apa102" => LedType::Apa102,
+        "ws2801" => LedType::Ws2801,
+        _ => LedType::Apa102,
+    };
+
     let mut rng = Prng::new(123456789);
-    let mut sprite = RandomSprites::<NUM_LEDS>::new(1.0, 0.00001, &mut rng);
-        
-    let mut led = Leds::<NUM_LEDS, BUF_SIZE>::new(LED_TYPE);
+    let mut sprite = RandomSprites::new(led_count, 1.0, 0.00001, &mut rng);
+
+    let mut phase: f32 = 0.0;
+    let phase_step: f32 = 0.0001;
+
+    let mut led = Leds::new(led_count, led_type);
     led.all_off();
     let _ = spi.write(&led.get_buffer()[..]);
-    let mut last_update: u64 = 0;
 
     let mut current_message = ColorMessage::new();
+
+    //let sine_test = hal::rom_data::float_funcs::fsin(0.5);
 
     loop {
         // Check for new data
@@ -175,7 +183,7 @@ fn main() -> ! {
                                 if serial.rts() { 
                                     break;
                                 }
-                                if timer.get_counter() - start >= 1000000 {
+                                if timer.get_counter() - start >= serial_timeout {
                                     break;
                                 }
                             }
@@ -208,7 +216,7 @@ fn main() -> ! {
             }
         }
         
-        if timer.get_counter() - last_update >= 10000 {
+        if timer.get_counter() - last_update >= update_time {
             last_update = timer.get_counter();
             
             match current_message.pattern {
@@ -225,12 +233,17 @@ fn main() -> ! {
                     spi.write(&led.get_buffer()[..]).ok();
                 }
                 3 => {
+                    led.fill_triangle(&current_message.color_1, &current_message.color_2, phase);
+                    spi.write(&led.get_buffer()[..]).ok();
+                }
+                4 => {
                     led.fill_random(&current_message.color_1, &current_message.color_2, &sprite);
                     spi.write(&led.get_buffer()[..]).ok();
                 }
                 _ => {},
             }
             sprite.run(&mut rng);
+            phase = (phase + phase_step) % 1.0;
         }
     }
 }

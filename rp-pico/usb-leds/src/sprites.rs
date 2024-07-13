@@ -17,15 +17,18 @@ impl RandomSprite {
     }
 }
 
-pub struct RandomSprites<const N: usize> {
+pub struct RandomSprites {
     value_scale: f32,             // range of sprite values, from 0.0..value_scale
     step_scale: f32,              // range of step size values, from (0..step_scale)
-    sprites: [RandomSprite; N],   // array of RandomSprite objects
+    len: usize,
+    sprites: [RandomSprite; 1024],   // array of RandomSprite objects
 }
 
-impl<const N: usize> RandomSprites<N> {
-    pub fn new(value_scale: f32, step_scale: f32, rng: &mut Prng) -> Self {
-        let mut sprites = [RandomSprite::new(); N];
+impl RandomSprites {
+    pub fn new(len: usize, value_scale: f32, step_scale: f32, rng: &mut Prng) -> Self {
+        // Sprite count is limited to 1024 to match LEDs
+        assert!(len <= 1024);
+        let mut sprites = [RandomSprite::new(); 1024];
 
         for i in sprites.iter_mut() {
             i.value = (rng.rand_f32() * value_scale).max(0.0).min(1.0);
@@ -36,6 +39,7 @@ impl<const N: usize> RandomSprites<N> {
         RandomSprites {
             value_scale: value_scale,
             step_scale: step_scale,
+            len: len,
             sprites: sprites,
         }
     }
@@ -56,6 +60,6 @@ impl<const N: usize> RandomSprites<N> {
     }
 
     pub fn get_sprites(&self) -> &[RandomSprite] {
-        &self.sprites
+        &self.sprites[0..self.len]
     }
 }
