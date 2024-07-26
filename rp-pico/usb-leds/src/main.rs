@@ -19,9 +19,9 @@ use usb_device::{class_prelude::*, prelude::*};
 use usbd_serial::SerialPort;
 
 mod colors;
-use crate::colors::{Pixel, PixelHsv};
+use crate::colors::PixelHsv;
 mod leds;
-use crate::leds::{Leds, LedType};
+use crate::leds::{BufferType, Leds, LedType};
 mod prng;
 use crate::prng::Prng;
 mod sprites;
@@ -84,7 +84,6 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
     
-    //~ let mut led_pin = pins.led.into_push_pull_output();
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
     let update_time: Duration<u64, 1, 1000000> = 10_u64.millis();
     let serial_timeout: Duration<u64, 1, 1000000> = 1_000_u64.millis();
@@ -105,7 +104,7 @@ fn main() -> ! {
             .product("USB LEDs")
             .serial_number(serial_num)])
         .unwrap()
-        .device_class(2) // from: https://www.usb.org/defined-class-codes
+        .device_class(2)
         .build();
     
     let spi_sclk: gpio::Pin<_, gpio::FunctionSpi, gpio::PullNone> = pins.gpio2.reconfigure();
@@ -121,14 +120,33 @@ fn main() -> ! {
         embedded_hal::spi::MODE_0,
     );
     
+    let mut pwm_slices = hal::pwm::Slices::new(pac.PWM, &mut pac.RESETS);
+    let pwm0 = &mut pwm_slices.pwm0;
+    pwm0.set_ph_correct();
+    pwm0.enable();
+    
+    let pwm1 = &mut pwm_slices.pwm1;
+    pwm1.set_ph_correct();
+    pwm1.enable();
+
+    let r_channel = &mut pwm0.channel_a;
+    r_channel.output_to(pins.gpio16);
+    
+    let g_channel = &mut pwm0.channel_b;
+    g_channel.output_to(pins.gpio17);
+    
+    let b_channel = &mut pwm1.channel_a;
+    b_channel.output_to(pins.gpio18);
+    
     let led_count = match usize::from_str_radix(env!("LED_COUNT"), 10) {
         Ok(v) => v,
-        Err(_) => 10,
+        Err(_) => 1,
     };
 
     let led_type = match env!("LED_TYPE") {
         "apa102" => LedType::Apa102,
         "ws2801" => LedType::Ws2801,
+        "analog" => LedType::Analog,
         _ => LedType::Apa102,
     };
 
@@ -140,7 +158,17 @@ fn main() -> ! {
 
     let mut led = Leds::new(led_count, led_type);
     led.all_off();
-    let _ = spi.write(&led.get_buffer()[..]);
+    
+    match led.buffer() {
+        BufferType::Addressable(b) => {
+            spi.write(&b[..led.buf_end()]).ok();
+        }
+        BufferType::Analog(b) => {
+            r_channel.set_duty(b[0]);
+            g_channel.set_duty(b[1]);
+            b_channel.set_duty(b[2]);
+        }
+    }
 
     let mut current_message = ColorMessage::new();
 
@@ -222,26 +250,33 @@ fn main() -> ! {
             match current_message.pattern {
                 0 => {
                     led.all_off();
-                    spi.write(&led.get_buffer()[..]).ok();
                 }
                 1 => {
                     led.fill_gradient(&current_message.color_1, &current_message.color_2);
-                    spi.write(&led.get_buffer()[..]).ok();
                 }
                 2 => {
                     led.fill_gradient_dual(&current_message.color_1, &current_message.color_2);
-                    spi.write(&led.get_buffer()[..]).ok();
                 }
                 3 => {
                     led.fill_triangle(&current_message.color_1, &current_message.color_2, phase);
-                    spi.write(&led.get_buffer()[..]).ok();
                 }
                 4 => {
                     led.fill_random(&current_message.color_1, &current_message.color_2, &sprite);
-                    spi.write(&led.get_buffer()[..]).ok();
                 }
                 _ => {},
             }
+            
+            match led.buffer() {
+                BufferType::Addressable(b) => {
+                    spi.write(&b[..led.len()]).ok();
+                }
+                BufferType::Analog(b) => {
+                    r_channel.set_duty(b[0]);
+                    g_channel.set_duty(b[1]);
+                    b_channel.set_duty(b[2]);
+                }
+            }
+            
             sprite.run(&mut rng);
             phase = (phase + phase_step) % 1.0;
         }

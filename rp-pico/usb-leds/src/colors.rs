@@ -46,6 +46,53 @@ impl Pixel {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Pixel16 {
+    r: u16,
+    g: u16,
+    b: u16,
+}
+
+impl Pixel16 {
+    pub fn new(r: u16, g: u16, b: u16) -> Self {
+        Self {
+            r: r,
+            g: g,
+            b: b,
+        }
+    }
+
+    pub fn set_rgb(&mut self, rgb: &Pixel16) {
+        self.r = rgb.r;
+        self.g = rgb.g;
+        self.b = rgb.b;
+    }
+
+    pub fn set_r(&mut self, r: u16) {
+        self.r = r;
+    }
+
+    pub fn get_r(&self) -> u16 {
+        self.r
+    }
+
+    pub fn set_g(&mut self, g: u16) {
+        self.g = g;
+    }
+
+    pub fn get_g(&self) -> u16 {
+        self.g
+    }
+
+    pub fn set_b(&mut self, b: u16) {
+        self.b = b;
+    }
+
+    pub fn get_b(&self) -> u16 {
+        self.b
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct PixelHsv {
     h: f32,
     s: f32,
@@ -124,6 +171,45 @@ impl PixelHsv {
                 out.r = (self.v * 255.0) as u8;
                 out.g = ((self.v * (1.0 - self.s)) * 255.0) as u8;
                 out.b = ((self.v * (1.0 - self.s * h_decimal)) * 255.0) as u8;
+            }
+            _ => (),
+        }
+        out
+    }
+    
+    pub fn to_rgb16(&self) -> Pixel16 {
+        let mut out = Pixel16 { r: 0, g: 0, b: 0 };
+        let h_decimal = (self.h * 6.0) - (((self.h * 6.0) as u8) as f32);
+        match (self.h * 6.0 % 6.0) as u8 {
+            0 => {
+                out.r = (self.v * 65535.0) as u16;
+                out.g = ((self.v * (1.0 - self.s * (1.0 - h_decimal))) * 65535.0) as u16;
+                out.b = ((self.v * (1.0 - self.s)) * 65535.0) as u16;
+            }
+            1 => {
+                out.r = ((self.v * (1.0 - self.s * h_decimal)) * 65535.0) as u16;
+                out.g = (self.v * 65535.0) as u16;
+                out.b = ((self.v * (1.0 - self.s)) * 65535.0) as u16;
+            }
+            2 => {
+                out.r = ((self.v * (1.0 - self.s)) * 65535.0) as u16;
+                out.g = (self.v * 65535.0) as u16;
+                out.b = ((self.v * (1.0 - self.s * (1.0 - h_decimal))) * 65535.0) as u16;
+            }
+            3 => {
+                out.r = ((self.v * (1.0 - self.s)) * 65535.0) as u16;
+                out.g = ((self.v * (1.0 - self.s * h_decimal)) * 65535.0) as u16;
+                out.b = (self.v * 65535.0) as u16;
+            }
+            4 => {
+                out.r = ((self.v * (1.0 - self.s * (1.0 - h_decimal))) * 65535.0) as u16;
+                out.g = ((self.v * (1.0 - self.s)) * 65535.0) as u16;
+                out.b = (self.v * 65535.0) as u16;
+            }
+            5 => {
+                out.r = (self.v * 65535.0) as u16;
+                out.g = ((self.v * (1.0 - self.s)) * 65535.0) as u16;
+                out.b = ((self.v * (1.0 - self.s * h_decimal)) * 65535.0) as u16;
             }
             _ => (),
         }
